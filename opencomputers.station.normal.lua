@@ -32,6 +32,8 @@ while true do
         computer.beep(1000, 0.1)
         computer.beep(1000, 0.1)
         computer.beep(1000, 0.1)
+	sleep(10)
+	component.invoke(redstone, "setOutput", backOutput, redstoneIdle)
       else
   os.sleep(10)
         component.invoke(redstone, "setOutput", backOutput, redstoneIdle)
