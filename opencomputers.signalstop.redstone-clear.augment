@@ -36,7 +36,7 @@ event.listen("ir_train_overhead", function(name, address, augment_type, uuid)
             Controller.setThrottle(0.2)
             Controller.setBrake(0)
     os.sleep(2) 
-    rs.setOutput(sides.west,0)
+    rs.setOutput(Outside,0)
            while rs.getInput(EndSide) > 1 do
                         os.sleep(0.5)      
                     end
