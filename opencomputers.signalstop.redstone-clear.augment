@@ -1,6 +1,9 @@
+-- Item Requirements - 2 Redstone Augments, 1 Controller Augment, 2 Adapters
+-- Screen Shot setup Example - https://puu.sh/AIUDR/759b7b1ac8.png
 -- Uses Redstone Input to go (local side)
 -- Used Redstone Output to Trigger something (Local OutSide)
 -- Will need to add varient to ensure train is clear to handle multi-engines safely
+-- Cobbled together by andrboot, code from LtBrandon & Gazer29
 local event = require("event")
 local component = require("component")
 local DetectorAugments = component.list("ir_augment_detector")
