@@ -27,9 +27,10 @@ local rs = component.redstone
 local redsignal = 2
 local redsiglock = 3
 local redblockclear = 1
-local WantedSpeed = 10
+local WantedSpeed = 5
 local Deadzone = 1
 local Threshold = 20 	-- Above this speed difference, SetChange = 1.0
+local Throttle = 0
 --- Varibles Finish
 
 
@@ -38,72 +39,50 @@ event.listen("ir_train_overhead", function(name, address, augment_type, uuid)
     if name ~= "ir_train_overhead" or augment_type ~= "DETECTOR" then
         return
     end
-
+--    print("event triggered") --debug print
     -- Get the detector
     local Detector = component.proxy(address)
-    local DetectorInfo = Detector.info()
 
     -- Sleep till train clears if it is active
     while rs.getInput(redblockclear) > 1 do
+--        print("sleeping while waiting for `redblockclear`") --debug print
         os.sleep(0.5)
-        DetectorInfo.id = "cake"
     end
 
     -- Loop over all the controllers to update them
     for ControllerUUID, ControllerName in pairs(ControllerAugments) do
         local Controller = component.proxy(ControllerUUID)
         -- Check to see if the stock is a loco or not
-        if string.find(DetectorInfo.id, "locomotives") then
-            -- print("do stuff")
-            Controller.setThrottle(0)
-            Controller.setBrake(1)
+        if string.find(Detector.info().id, "locomotives") then
 
             -- Check to see if next block is clear and wait until it is
+            Controller.setThrottle(0)
+            Controller.setBrake(1)
             while rs.getInput(redsignal) == 0 do
+--                print("Waiting for next block to be clear, currently: ", rs.getInput(redsignal))
                 os.sleep(0.5)
             end
 
+--            print("redsiglock triggered")
             rs.setOutput(redsiglock,15)
-
-            -- Old speed Controls	        	Controller.setThrottle(0.25)
-            --old Speed Controls                Controller.setBrake(0)
-            -- New Fancy Code to ensure train is actually moving
-            if DetectorInfo then
-                Difference = DetectorInfo.speed - WantedSpeed
-                if Difference < 0 then
-                    Difference = Difference * -1
-                end
-
-                SetChange = Difference / Threshold
-
-                if Difference > Threshold then
-                    SetChange = 1.0
-                end
-
-                print("Diff:", Difference, "  Speed:", DetectorInfo.speed, "  SetChange:", SetChange)
-            end
-
-            -- If we're within a certain range of WantedSpeed then don't do anything
-
-            if DetectorInfo and math.abs(DetectorInfo.speed - WantedSpeed) > Deadzone then
-                -- If we're too far above or below WantedSpeed then speed up or slow down
-                if DetectorInfo.speed < WantedSpeed then
-                    Controller.setThrottle(SetChange)
-                    Controller.setBrake(0.0)
-                    print("inc")
-                else
-                    Controller.setThrottle(0.040)
-                    Controller.setBrake(SetChange)
-                    print("dec")
-                end
-            else
-                Controller.setThrottle(0.066)
-                Controller.setBrake(0.0)
-                print("ok")
-
-            end
-
+--            print("Setting brakes to 0")
+            Controller.setBrake(0)
+	    os.sleep(0.1)
             rs.setOutput(redsiglock,0)
+		
+            while Detector.info() and (rs.getInput(redblockclear) < 1) do
+
+                if Detector.info().speed <= WantedSpeed - Deadzone then
+                    Throttle = Throttle + 0.005
+                elseif Detector.info().speed >= WantedSpeed + Deadzone then
+                    Throttle = Throttle - 0.005
+                end
+                Controller.setThrottle(Throttle)
+
+--                print("Speed at: ", Detector.info().speed, ", Setting Throttle to: ", Throttle)
+
+                
+            end
         end
     end
 end)
