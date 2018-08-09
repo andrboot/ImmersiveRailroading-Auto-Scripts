@@ -6,6 +6,7 @@
 	-- uses Redstone Input to GO or halt if active ( redsignal)
 	-- uses redstone Output to Trigger something (like a signal block redout redsiglock)
 	-- uses redstone Input to ensure consist has cleared before going back to normal for multi-locos (redblockclear)
+	-- Uses Variable to determine if this is a station block or a signal block to ensure smooth running (signal.type 0 = Signal, 1 = Station)
 	-- Cobbled together by andrboot, with code from LtBrandon & Gazer29 & DonSpruce
 
 -- Redstone Refence using Redstone Card on computer NOT redstone block
@@ -27,10 +28,11 @@ local rs = component.redstone
 local redsignal = 2
 local redsiglock = 3
 local redblockclear = 1
-local WantedSpeed = 5
+local WantedSpeed = 2
 local Deadzone = 1
 local Threshold = 20 	-- Above this speed difference, SetChange = 1.0
 local Throttle = 0
+local ocsignaltype = 0
 --- Varibles Finish
 
 
@@ -44,45 +46,65 @@ event.listen("ir_train_overhead", function(name, address, augment_type, uuid)
     local Detector = component.proxy(address)
 
     -- Sleep till train clears if it is active
-    while rs.getInput(redblockclear) > 1 do
---        print("sleeping while waiting for `redblockclear`") --debug print
-        os.sleep(0.5)
-    end
+		while rs.getInput(redblockclear) > 1 do
+	--        print("sleeping while waiting for `redblockclear`") --debug print
+			os.sleep(0.5)
+		end
 
-    -- Loop over all the controllers to update them
-    for ControllerUUID, ControllerName in pairs(ControllerAugments) do
-        local Controller = component.proxy(ControllerUUID)
-        -- Check to see if the stock is a loco or not
-        if string.find(Detector.info().id, "locomotives") then
+		-- Loop over all the controllers to update them
+		for ControllerUUID, ControllerName in pairs(ControllerAugments) do
+			local Controller = component.proxy(ControllerUUID)
+			-- Check to see if the stock is a loco or not
+			if string.find(Detector.info().id, "locomotives") then
+				if ocsignaltype == 0 then
+		--                print("Waiting for next block to be clear, currently: ", rs.getInput(redsignal))
+					if 	rs.getInput(redsignal) > 0 then
+						while rs.getInput(redblockclear) == 0 do
+							rs.setOutput(redsiglock,15)
+							os.sleep(0.1)
+							rs.setOutput(redsiglock,0)
+		--                	print("Waiting for next block to be clear, currently: ", rs.getInput(redsignal))
+							os.sleep(0.5)
+						end	
+								while rs.getInput(redblockclear) > 1 do
+						--        print("sleeping while waiting for `redblockclear`") --debug print
+									os.sleep(0.5)
+								end
+					end
+				end
+				-- Check to see if next block is clear and wait until it is
+					Controller.setThrottle(0)
+					Controller.setBrake(1)
+					if ocsignaltype == 1 then
+						os.sleep(5)
+					end
+					while rs.getInput(redsignal) == 0 do
+		--                print("Waiting for next block to be clear, currently: ", rs.getInput(redsignal))
+						os.sleep(0.5)
+					end
+				
+				
+		--            print("redsiglock triggered")
+					rs.setOutput(redsiglock,15)
+		--            print("Setting brakes to 0")
+					Controller.setBrake(0)
+					os.sleep(0.1)
+					rs.setOutput(redsiglock,0)
+				
+					while Detector.info() and (rs.getInput(redblockclear) < 1) do
 
-            -- Check to see if next block is clear and wait until it is
-            Controller.setThrottle(0)
-            Controller.setBrake(1)
-            while rs.getInput(redsignal) == 0 do
---                print("Waiting for next block to be clear, currently: ", rs.getInput(redsignal))
-                os.sleep(0.5)
-            end
+						if Detector.info().speed <= WantedSpeed - Deadzone then
+							Throttle = Throttle + 0.005
+						elseif Detector.info().speed >= WantedSpeed + Deadzone then
+						end
+						Controller.setThrottle(Throttle)
 
---            print("redsiglock triggered")
-            rs.setOutput(redsiglock,15)
---            print("Setting brakes to 0")
-            Controller.setBrake(0)
-	    os.sleep(0.1)
-            rs.setOutput(redsiglock,0)
-		
-            while Detector.info() and (rs.getInput(redblockclear) < 1) do
+		--                print("Speed at: ", Detector.info().speed, ", Setting Throttle to: ", Throttle)
 
-                if Detector.info().speed <= WantedSpeed - Deadzone then
-                    Throttle = Throttle + 0.005
-                elseif Detector.info().speed >= WantedSpeed + Deadzone then
-                    Throttle = Throttle - 0.005
-                end
-                Controller.setThrottle(Throttle)
-
---                print("Speed at: ", Detector.info().speed, ", Setting Throttle to: ", Throttle)
-
-                
-            end
-        end
-    end
+						
+					end
+				end
+			
+		end
 end)
+
