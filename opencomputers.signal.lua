@@ -44,13 +44,10 @@ event.listen("ir_train_overhead", function(name, address, augment_type, uuid)
 --    print("event triggered") --debug print
     -- Get the detector
     local Detector = component.proxy(address)
-
     -- Sleep till train clears if it is active
 		while rs.getInput(redblockclear) > 1 do
-	--        print("sleeping while waiting for `redblockclear`") --debug print
-			os.sleep(0.5)
+			os.exit(0)
 		end
-
 		-- Loop over all the controllers to update them
 		for ControllerUUID, ControllerName in pairs(ControllerAugments) do
 			local Controller = component.proxy(ControllerUUID)
@@ -82,20 +79,16 @@ event.listen("ir_train_overhead", function(name, address, augment_type, uuid)
 		--                print("Waiting for next block to be clear, currently: ", rs.getInput(redsignal))
 						os.sleep(0.5)
 					end
-				
-				
 		--            print("redsiglock triggered")
 					rs.setOutput(redsiglock,15)
 		--            print("Setting brakes to 0")
 					Controller.setBrake(0)
 					os.sleep(0.1)
 					rs.setOutput(redsiglock,0)
-				
 					while Detector.info() and (rs.getInput(redblockclear) < 1) do
 
 						if Detector.info().speed <= WantedSpeed - Deadzone then
 							Throttle = Throttle + 0.005
-						elseif Detector.info().speed >= WantedSpeed + Deadzone then
 						end
 						Controller.setThrottle(Throttle)
 
