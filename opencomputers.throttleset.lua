@@ -57,7 +57,6 @@ event.listen("ir_train_overhead", function(name, address, augment_type, uuid)
 
 
 						
-					end
 				end
 			
 		end
