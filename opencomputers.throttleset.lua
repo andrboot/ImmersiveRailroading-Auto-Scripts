@@ -17,7 +17,9 @@
 	-- Right (right), Number: 4
 	-- Left (left), Number: 5
 	--Created by Don_Spruce
-
+-- Save Throttle Numbers
+-- Lowest Possible (with steam) 0.4
+-- "highest' without overheating locos - 0.65
 ---- Variables Start
 local event = require("event")
 local component = require("component")
