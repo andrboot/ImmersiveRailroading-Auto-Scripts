@@ -89,6 +89,9 @@ event.listen("ir_train_overhead", function(name, address, augment_type, uuid)
 
 						if Detector.info().speed <= WantedSpeed - Deadzone then
 							Throttle = Throttle + 0.005
+							if Throttle >= 0.50 then
+								os.exit(0)
+							end
 						end
 						Controller.setThrottle(Throttle)
 
