@@ -38,6 +38,7 @@ local THROTTLE_PRECISION = 0.001
 
 local CONFIG_FILE = "ir_speed_control_config"
 
+local redblockclear = 1
 
 -- Only enable OC-specific modules if not in debug.
 local component = nil
@@ -454,6 +455,10 @@ end
 --------------------------------------------------|
 -- ACTUAL SCRIPT: This is the program entry point.|
 --------------------------------------------------|
+while rs.getInput(redblockclear) > 1 do
+      os.exit(0)
+    end
+
 
 if (not DEBUG) then
 
