@@ -38,7 +38,7 @@ local THROTTLE_PRECISION = 0.001
 
 local CONFIG_FILE = "ir_speed_control_config"
 
-local redblockclear = 1
+
 
 -- Only enable OC-specific modules if not in debug.
 local component = nil
@@ -172,6 +172,9 @@ local function slowDown(v_i, v_f, x, rolling_resistance_force, traction, total_w
 	end
 
 	if (not DEBUG) then
+		while component.redstone.getInput(1) > 1 do
+		      os.exit(0)
+    	end
 		control.setThrottle(0)
 		control.setBrake(brake)
 		print("[-] " .. formatMps(v_i) .. " Km/h -> " .. formatMps(v_f) .. " Km/h, Brakes set to " .. string.format("%.3f", brake))
@@ -354,7 +357,6 @@ local function handleEvent(augment_type, stock_uuid, params)
 	if (augment_type == "LOCO_CONTROL" and stock ~= nil and stock.horsepower ~= nil) then
 		-- Assume that the detector and the controller are at the same point.
 		local consist = detector.consist()
-
 		setFinalVelocityAtDistance(
 			consist.speed_km,
 			params.final_velocity,
@@ -364,7 +366,9 @@ local function handleEvent(augment_type, stock_uuid, params)
 		)
 
 		-- Call user-defined function after all speed-dependent logic is done.
+		
 		onTrainOverhead(stock, consist, control)
+		
 	end
 end
 
@@ -455,9 +459,8 @@ end
 --------------------------------------------------|
 -- ACTUAL SCRIPT: This is the program entry point.|
 --------------------------------------------------|
-while rs.getInput(redblockclear) > 1 do
-      os.exit(0)
-    end
+
+
 
 
 if (not DEBUG) then
