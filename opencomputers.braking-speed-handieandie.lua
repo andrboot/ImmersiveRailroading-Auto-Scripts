@@ -3,8 +3,8 @@ Author: Andrew Lalis
 File: train_control.lua
 Version: 1.0
 Last Modified: 06-12-2019 - Andrboot
-   
-This script provides simple ways to set target velocities and distances for 
+
+This script provides simple ways to set target velocities and distances for
 trains from the mod Immersive Engineering. To set it up, place two augments,
 one detector and one controller, on the same rail tie, and connect both to a
 computer.
@@ -16,8 +16,9 @@ This script focuses on two major actions:
 --]]
 
 local DEBUG = false
-local VERBOSE = false
-
+local VERBOSE = true
+local EndScriptAutomatically = false
+local EndScript = false
 --[[
 This function can be implemented by users for added functionality.
 
@@ -73,8 +74,14 @@ local function fromMetric(v)
 end
 
 local function getSlip(v)
-	-- TODO: Include weather and biome conditions.
-	return 1 - 0.004 * math.abs(v)
+    -- TODO: Include weather and biome conditions.
+    local SlipMult = SLIP_CONSTANT
+
+    if math.abs(v) >= 0.0001 then
+        SlipMult = SlipMult * (1 - 0.004 * math.abs(v))
+    end
+
+	return SlipMult
 end
 
 --[[
@@ -101,7 +108,7 @@ v_i - float: Initial velocity
 v_f - float: Final velocity
 x - float: Displacement (distance travelled)
 
-return - float: Acceleration needed to achieve the given final velocity in 
+return - float: Acceleration needed to achieve the given final velocity in
 x distance.
 --]]
 local function getAcceleration(v_i, v_f, x)
@@ -129,13 +136,31 @@ local function getTractionIntersect(throttle, horsepower, traction)
 	return s2
 end
 
+local LocoCountBrakeModifier = {
+    1.0,
+    0.47943,
+    0.40,
+    0.27
+}
+
 local function getBrake(v_i, v_f, x, rolling_resistance_force, traction, total_weight, loco_weight)
-	
-	target_acceleration = getAcceleration(v_i, v_f, x)
+	local target_acceleration = getAcceleration(v_i, v_f, x) * ((0.015 + (v_i * 0.0001)) * (LocoCountBrakeModifier[loconumber] or 0.01))
 	local num = (-total_weight * target_acceleration - rolling_resistance_force) * (v_f - v_i)
-	local C = 20
-	local C_1 = 0.39
-	local denom = C_1 * (traction + 0.27801375 * (total_weight - loco_weight)) * SLIP_CONSTANT * (((v_f * C) - 0.002 * (v_f * C)^2) - ((v_i * C) - 0.002 * (v_i * C)^2))
+    local denom = (traction + 0.27801375 * (total_weight - loco_weight)) * getSlip(v_i) * ((v_f - 0.002 * (v_f * v_f)) - (v_i - 0.002 * (v_i * v_i)))
+
+    if VERBOSE then
+        print("\n\n[getBreak Debug Info]")
+        print("Inputs: ", v_i, v_f, x, rolling_resistance_force, traction, total_weight, loco_weight, "\n")
+        print("target_acceleration = ", target_acceleration)
+        print("num = ", num)
+        print("\tnum_l = ", (-total_weight * target_acceleration - rolling_resistance_force))
+        print("\tnum_r = ", (v_f - v_i))
+        print("denom = ", denom)
+        print("\tdenom_l = ", (traction + 0.27801375 * (total_weight - loco_weight)))
+        print("\tdenom_m = ", getSlip(v_i))
+        print("\tdenom_r = ", ((v_f - 0.002 * (v_f * v_f)) - (v_i - 0.002 * (v_i * v_i))))
+        print("\n[getBreak Debug Info End]\n\n")
+    end
 
 	return math.sqrt(num / denom)
 end
@@ -152,20 +177,15 @@ total_weight - float: The total weight of the entire consist.
 loco_weight - float: The weight of the locomotive.
 --]]
 local function slowDown(v_i, v_f, x, rolling_resistance_force, traction, total_weight, loco_weight)
-	
-	target_acceleration = getAcceleration(v_i, v_f, x)
-	local num = (-total_weight * target_acceleration - rolling_resistance_force) * (v_f - v_i)
-	local denom = (traction + 0.27801375 * (total_weight - loco_weight)) * SLIP_CONSTANT * (((v_f * 3.6) - 0.002 * (v_f * 3.6)^2) - ((v_i * 3.6) - 0.002 * (v_i * 3.6)^2))
-
 	local brake = getBrake(
-		v_i,
-		v_f,
+		v_i * 3.6,
+		v_f * 3.6,
 		x,
 		rolling_resistance_force,
 		traction,
 		total_weight,
 		loco_weight
-	)
+    )
 
 	if (VERBOSE) then
 		print("  Estimated brake required: " .. brake)
@@ -303,7 +323,7 @@ local function setFinalVelocityAtDistance(v_i, v_f, x, stock, consist)
 	-- Locomotive constants.
 	-- Additional Magic for Consist combination
 	loconumber = 0
-	locotracions = 0 
+	locotracions = 0
 	locoweight = 0
 	locohorse = 0
 		repeat
@@ -356,7 +376,10 @@ local function handleEvent(augment_type, stock_uuid, params)
 	local stock = detector.info()
 	if (augment_type == "LOCO_CONTROL" and stock ~= nil and stock.horsepower ~= nil) then
 		-- Assume that the detector and the controller are at the same point.
-		local consist = detector.consist()
+        local consist = detector.consist()
+
+        if not consist then return end
+
 		setFinalVelocityAtDistance(
 			consist.speed_km,
 			params.final_velocity,
@@ -366,9 +389,10 @@ local function handleEvent(augment_type, stock_uuid, params)
 		)
 
 		-- Call user-defined function after all speed-dependent logic is done.
-		
+
 		onTrainOverhead(stock, consist, control)
-		
+
+        EndScript = true
 	end
 end
 
@@ -408,9 +432,9 @@ return - float, float: VF and X
 local function getParameters(args)
 	local params = {
 		final_velocity = 0,
-		distance = 100
+		distance = 40
 	}
-	
+
 	-- Attempt to get arguments from command line, if given.
 	if (#args == 2) then
 		params.final_velocity = tonumber(args[1])
@@ -476,7 +500,7 @@ if (not DEBUG) then
 	print("| Distance: " .. params.distance .. " m")
 	print("--------------------------------------")
 
-	while (true) do
+	while not EndScriptAutomatically or not EndScript do
 		event_name, address, augment_type, stock_uuid = event.pull("ir_train_overhead")
 		handleEvent(augment_type, stock_uuid, params)
 	end
