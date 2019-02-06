@@ -88,11 +88,12 @@ event.listen("ir_train_overhead", function(name, address, augment_type, uuid)
           while Detector.info() and (rs.getInput(redblockclear) < 1) do
 
             if Detector.info().speed <= WantedSpeed - Deadzone then
+	     if Throttle < 0.5 then 
               Throttle = Throttle + 0.005
               Controller.setThrottle(Throttle)
-              if Throttle >= 0.50 then
-                os.exit(0)
-              end
+              else
+		os.exit(0)
+	      end
             end
 --            Controller.setThrottle(Throttle)
 
