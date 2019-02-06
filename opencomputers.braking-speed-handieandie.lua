@@ -1,8 +1,10 @@
 --[[
 Author: Andrew Lalis
+Tweaked: Andrew B
+Tweaked More: LtBrandon
 File: train_control.lua
-Version: 1.0
-Last Modified: 06-12-2019 - Andrboot
+Version: 1.1
+Last Modified: 26-01-2019 - Andrboot
 
 This script provides simple ways to set target velocities and distances for
 trains from the mod Immersive Engineering. To set it up, place two augments,
@@ -12,8 +14,7 @@ computer.
 This script focuses on two major actions:
 	1. Slowing down the train with brakes.
 	2. Speeding up with the throttle.
-
---]]
+]]--
 
 local DEBUG = false
 local VERBOSE = true
@@ -136,72 +137,81 @@ local function getTractionIntersect(throttle, horsepower, traction)
 	return s2
 end
 
-local LocoCountBrakeModifier = {
-    1.0,
-    0.47943,
-    0.40,
-    0.27
-}
-
-local function getBrake(v_i, v_f, x, rolling_resistance_force, traction, total_weight, loco_weight)
-	local target_acceleration = getAcceleration(v_i, v_f, x) * ((0.015 + (v_i * 0.0001)) * (LocoCountBrakeModifier[loconumber] or 0.01))
-	local num = (-total_weight * target_acceleration - rolling_resistance_force) * (v_f - v_i)
-    local denom = (traction + 0.27801375 * (total_weight - loco_weight)) * getSlip(v_i) * ((v_f - 0.002 * (v_f * v_f)) - (v_i - 0.002 * (v_i * v_i)))
-
+local function ApplyBrakes(BrakePower)
     if VERBOSE then
-        print("\n\n[getBreak Debug Info]")
-        print("Inputs: ", v_i, v_f, x, rolling_resistance_force, traction, total_weight, loco_weight, "\n")
-        print("target_acceleration = ", target_acceleration)
-        print("num = ", num)
-        print("\tnum_l = ", (-total_weight * target_acceleration - rolling_resistance_force))
-        print("\tnum_r = ", (v_f - v_i))
-        print("denom = ", denom)
-        print("\tdenom_l = ", (traction + 0.27801375 * (total_weight - loco_weight)))
-        print("\tdenom_m = ", getSlip(v_i))
-        print("\tdenom_r = ", ((v_f - 0.002 * (v_f * v_f)) - (v_i - 0.002 * (v_i * v_i))))
-        print("\n[getBreak Debug Info End]\n\n")
-    end
+		print("  Applying brakes at power: "..BrakePower)
+	end
 
-	return math.sqrt(num / denom)
+    control.setThrottle(0)
+    control.setBrake(BrakePower)
 end
 
 --[[
 Slows a train down with a constant target acceleration.
 
-v_i - float: Initial velocity, in m/s.
-v_f - float: Final velocity, in m/s.
-x - float: The distance, in meters.
-rolling_resistance_force - float: The resistance caused by total weight of the rolling stock.
-traction - float: The total static traction of the locomotive. (This is shown in the GUI).
-total_weight - float: The total weight of the entire consist.
-loco_weight - float: The weight of the locomotive.
+    TrainMass = Full mass of train in kg
+    TrainVelocity = Train velocity in m/s
+    TargetVelocity = Target velocity in m/s
+    TargetDistance = Distance to reach target velocity in meters
+    StartingTractionNewtons = available from computer api
 --]]
-local function slowDown(v_i, v_f, x, rolling_resistance_force, traction, total_weight, loco_weight)
-	local brake = getBrake(
-		v_i * 3.6,
-		v_f * 3.6,
-		x,
-		rolling_resistance_force,
-		traction,
-		total_weight,
-		loco_weight
-    )
+local function slowDown(TrainMass, TrainVelocity, TargetVelocity, TargetDistance, StartingTractionNewtons)
+    local ConfigBrakeMultiplier = 1.0
+    local AccelerationNeeded = -getAcceleration(TrainVelocity, TargetVelocity, TargetDistance) * 0.18
 
-	if (VERBOSE) then
-		print("  Estimated brake required: " .. brake)
-	end
+    if VERBOSE then
+        print("Starting braking, acceleration needed: ", AccelerationNeeded)
+    end
 
-	if (not DEBUG) then
-		while component.redstone.getInput(1) > 1 do
-		      os.exit(0)
-    	end
-		control.setThrottle(0)
-		control.setBrake(brake)
-		print("[-] " .. formatMps(v_i) .. " Km/h -> " .. formatMps(v_f) .. " Km/h, Brakes set to " .. string.format("%.3f", brake))
-		if (brake > 1) then
-			print("  ! [WARNING] ! Not enough braking power.")
-		end
-	end
+    -- Figure out acceleration from resistance
+    local TrainMassLb = 2.20462 * TrainMass
+    local RollingResistanceNewtons = TrainMassLb * 0.00667233
+    local ResistanceAcceleration = RollingResistanceNewtons / TrainMass
+
+    if ResistanceAcceleration < AccelerationNeeded then
+        -- Apply Brakes for remaining acceleration
+        AccelerationNeeded = AccelerationNeeded - ResistanceAcceleration
+
+        -- Figure out the maximum Acceleration from the brakes
+        local TrainBrakePower = 1.0
+        local SlipCoefficient = getSlip((TrainVelocity + TargetVelocity) / 2)
+        local MaxAirBrake = math.min(math.min(1, math.pow(TrainBrakePower, 2)) * SlipCoefficient, 1) * loconumber
+        local MaxBrakeNewtons = StartingTractionNewtons * MaxAirBrake * ConfigBrakeMultiplier
+        local MaxBrakeAcceleration = MaxBrakeNewtons / TrainMass
+
+        if AccelerationNeeded > MaxBrakeAcceleration then
+            print("Warning! Train is going too fast and will not stop in time!")
+            print("Braking acceleration required: ", AccelerationNeeded)
+            print("Braking acceleration available: ", MaxBrakeAcceleration)
+            ApplyBrakes(1.0)
+        else
+            -- I'm sure this could be done mathematically, but we're just going to bruteforce it
+            -- because we don't have to worry about performance here.
+            local BrakePower = 0
+            local BrakePowerStep = 0.001
+            local BrakeAcceleration
+
+            repeat
+                BrakePower = BrakePower + BrakePowerStep
+
+                local AirBrake = math.min(math.min(1, math.pow(BrakePower * TrainBrakePower, 2)) * SlipCoefficient, 1) * loconumber
+                local BrakeNewtons = StartingTractionNewtons * AirBrake * ConfigBrakeMultiplier
+
+                BrakeAcceleration = BrakeNewtons / TrainMass
+            until BrakeAcceleration >= AccelerationNeeded
+
+            if VERBOSE then
+                print("Train is now braking (BrakeNewtons, BrakeAcceleration, AccelerationNeeded): ")
+                print(BrakeNewtons, BrakeAcceleration, AccelerationNeeded)
+            end
+
+            -- Tell the train to stop
+            ApplyBrakes(BrakePower)
+        end
+    else
+        -- Accelerate? This probably isn't needed, but let me know.
+        print("Warning! Train is moving too slow to reach the destination!")
+    end
 end
 
 local function speedUp(v_i, v_f, target_acceleration, rolling_resistance_force, traction, total_weight, loco_weight, horsepower, half_velocity)
@@ -354,15 +364,14 @@ local function setFinalVelocityAtDistance(v_i, v_f, x, stock, consist)
 			half_velocity
 		)
 	else
-		-- Use brakes to slow the train over time.
+        -- Use brakes to slow the train over time.
+        -- slowDown(TrainMass, TrainVelocity, TargetVelocity, TargetDistance, StartingTractionNewtons)
 		slowDown(
+            total_weight,
 			v_i,
 			v_f,
 			x,
-			rolling_resistance_force,
-			loco_traction,
-			total_weight,
-			weight_loco_kg
+			consist.totoal_traction_N
 		)
 	end
 
@@ -374,7 +383,8 @@ end
 
 local function handleEvent(augment_type, stock_uuid, params)
 	local stock = detector.info()
-	if (augment_type == "LOCO_CONTROL" and stock ~= nil and stock.horsepower ~= nil) then
+	local rsdetect = component.redstone
+	if (augment_type == "LOCO_CONTROL" and stock ~= nil and stock.horsepower ~= nil and rsdetect.getInput(1) == 0) then
 		-- Assume that the detector and the controller are at the same point.
         local consist = detector.consist()
 
