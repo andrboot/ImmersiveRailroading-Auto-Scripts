@@ -34,50 +34,8 @@ local WantedSpeed = 2
 local Deadzone = 1
 local Threshold = 20  -- Above this speed difference, SetChange = 1.0
 local Throttle = 0
-local CONFIG_FILE = "ir_signal_control_config"
---local ocsignaltype = 1
+local ocsignaltype = 0
 --- Varibles Finish
-
-local CONFIG_FILE = "ir_signal_control_config"
-
-local function saveParameters(params)
-	if (fs ~= nil) then
-		local f = io.open(CONFIG_FILE, "w")
-		f:write(serialization.serialize(params))
-		f:close()
-	end
-end
---[[
-Reads parameters from a configuration file.
-return - table: A table of parameters.
---]]
-local function readParameters()
-	local f = io.open(CONFIG_FILE, "r")
-	local params = serialization.unserialize(f:read("*a"))
-	f:close()
-	return params
-end
-
-local function getParameters(args)
-	local params = {
-		ocsignaltype = 0,
-	}
-
-	-- Attempt to get arguments from command line, if given.
-	if (#args == 1) then
-		params.ocsignaltype = tonumber(args[1])
-		saveParameters(params)
-		print("[i] Saved config to file.")
-	elseif (fs ~= nil) then
-		for k,v in pairs(readParameters()) do
-			params[k] = v
-		end
-		print("[i] Loaded config from file.")
-	end
-
-	return params
-end
-	local params = getParameters({...})
 
 event.listen("ir_train_overhead", function(name, address, augment_type, uuid)
     -- Only run for ir_train_overhead with augment type of DETECTOR
