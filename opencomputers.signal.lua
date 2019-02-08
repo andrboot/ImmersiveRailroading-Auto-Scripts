@@ -47,6 +47,17 @@ local function saveParameters(params)
 		f:close()
 	end
 end
+--[[
+Reads parameters from a configuration file.
+return - table: A table of parameters.
+--]]
+local function readParameters()
+	local f = io.open(CONFIG_FILE, "r")
+	local params = serialization.unserialize(f:read("*a"))
+	f:close()
+	return params
+end
+
 local function getParameters(args)
 	local params = {
 		ocsignaltype = 0,
