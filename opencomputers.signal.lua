@@ -54,22 +54,22 @@ event.listen("ir_train_overhead", function(name, address, augment_type, uuid)
       local Controller = component.proxy(ControllerUUID)
       -- Check to see if the stock is a loco or not
       if string.find(Detector.info().id, "locomotives") then
-        if ocsignaltype == 0 then
+    --    if ocsignaltype == 0 then
     --                print("Waiting for next block to be clear, currently: ", rs.getInput(redsignal))
-          if  rs.getInput(redsignal) > 0 then
-            while rs.getInput(redblockclear) == 0 do
-              rs.setOutput(redsiglock,15)
-              os.sleep(0.1)
-              rs.setOutput(redsiglock,0)
+    --      if  rs.getInput(redsignal) > 0 then
+    --        while rs.getInput(redblockclear) == 0 do
+    --          rs.setOutput(redsiglock,15)
+    --          os.sleep(0.1)
+    --          rs.setOutput(redsiglock,0)
     --                  print("Waiting for next block to be clear, currently: ", rs.getInput(redsignal))
-              os.sleep(0.5)
-            end 
-                while rs.getInput(redblockclear) > 1 do
-            --        print("sleeping while waiting for `redblockclear`") --debug print
-                  os.sleep(0.5)
-                end
-          end
-        end
+    --          os.sleep(0.5)
+    --        end 
+    --            while rs.getInput(redblockclear) > 1 do
+    --        --        print("sleeping while waiting for `redblockclear`") --debug print
+    --              os.sleep(0.5)
+    --            end
+    --      end
+    --    end
         -- Check to see if next block is clear and wait until it is
           Controller.setThrottle(0)
           Controller.setBrake(1)
@@ -89,12 +89,9 @@ event.listen("ir_train_overhead", function(name, address, augment_type, uuid)
           while Detector.info() and (rs.getInput(redblockclear) < 1) do
 
             if Detector.info().speed <= WantedSpeed - Deadzone then
-	     if Throttle < 0.5 then 
               Throttle = Throttle + 0.005
               Controller.setThrottle(Throttle)
-              else
-		os.exit(0)
-	      end
+	     
             end
 --            Controller.setThrottle(Throttle)
 
