@@ -38,10 +38,11 @@ event.listen("ir_train_overhead", function(name, address, augment_type, uuid)
           rs.setOutput(redsiglock,0)
           if  (rs.getInput(redblockclear) < 1) then
 
-            while Throttle <= 0.5 do
-              Throttle = Throttle + 0.005
-              Controller.setThrottle(Throttle)
-		end
+		repeat
+              		Throttle = Throttle + 0.005
+        	      	Controller.setThrottle(Throttle)
+				
+		until component.ir_augment_detector.info().throttle >= 0.5
 	end
             
           end
