@@ -36,7 +36,7 @@ event.listen("ir_train_overhead", function(name, address, augment_type, uuid)
           Controller.setBrake(0)
           os.sleep(0.1)
           rs.setOutput(redsiglock,0)
-          while (Throttle < 0.5) and (rs.getInput(redblockclear) < 1) do
+          while (Throttle <= 0.5) and (rs.getInput(redblockclear) < 1) do
 
               Throttle = Throttle + 0.005
               Controller.setThrottle(Throttle)
