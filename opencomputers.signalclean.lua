@@ -42,7 +42,7 @@ event.listen("ir_train_overhead", function(name, address, augment_type, uuid)
               		Throttle = Throttle + 0.005
         	      	Controller.setThrottle(Throttle)
 				
-		until component.ir_augment_detector.info().throttle >= 0.5
+		until component.ir_augment_detector.info().speed >= 5
 	end
             
           end
