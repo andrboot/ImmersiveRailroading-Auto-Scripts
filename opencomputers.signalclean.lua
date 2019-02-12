@@ -39,7 +39,7 @@ event.listen("ir_train_overhead", function(name, address, augment_type, uuid)
           if  (rs.getInput(redblockclear) < 1) then
 
 		repeat
-			if component.ir_augment_detector.info().throttle =< 0.5 then
+			if component.ir_augment_detector.info().throttle <= 0.4 then
               		Throttle = Throttle + 0.005
         	      	Controller.setThrottle(Throttle)
 			end
