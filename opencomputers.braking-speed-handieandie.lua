@@ -14,6 +14,7 @@ computer.
 This script focuses on two major actions:
 	1. Slowing down the train with brakes.
 	2. Speeding up with the throttle.
+Requires - Redstonecard
 ]]--
 
 local DEBUG = false
