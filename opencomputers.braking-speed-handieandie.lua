@@ -372,7 +372,7 @@ local function setFinalVelocityAtDistance(v_i, v_f, x, stock, consist)
 			v_i,
 			v_f,
 			x,
-			consist.totoal_traction_N
+			consist.total_traction_N
 		)
 	end
 
