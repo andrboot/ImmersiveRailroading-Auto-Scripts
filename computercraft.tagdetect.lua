@@ -9,17 +9,21 @@
 -- Detectoraugment to be 'behind' with redstone
 -- Redstone output from the 'right' as output
 -- Redstsone output from Bottom as 'train over'
--- Variable - Tag
+-- Variable - None - need to manually update tag line
 
-local detection="_taghere_"
+
 while true do
 	if redstone.getInput("bottom") then
             os.reboot()
         end
-	if string.find( peripheral.call("top",getTag"), detection) then
-		redstone.setOutput("right", true)
-		os.sleep(1)
-		redstone.setOutput("right", false)
+	if redstone.getOutput("back") then
+		if string.find(peripheral.call("top","getTag"), "_taggoeshere_") then
+			redstone.setOutput("right", true)
+			os.sleep(1)
+			redstone.setOutput("right", false)
+			os.sleep(5)
+		else
+		end
 	end
 	os.pullEvent("redstone")
 end
