@@ -13,7 +13,7 @@
 --#
 --#
 local type=0
-local detector = peripheral.call.wrap("top")
+--# local detector = peripheral.call.wrap("top")
 while true do
     if redstone.getInput("back") then
 --# Ignores if trains overapssing
@@ -35,8 +35,8 @@ local Throttle = 0
 		repeat
 			Throttle = Throttle + 0.005
 			peripheral.call("top", "setThrottle", Throttle)
-			os.sleep(0.1)
-		until  detector.info().speed > 0
+			os.sleep(0.5)
+		until  peripheral.call("top","info").speed > 0
 
 			
         end
