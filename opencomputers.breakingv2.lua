@@ -3,8 +3,8 @@ Author: Andrew Lalis
 Tweaked: Andrew B
 Tweaked More: LtBrandon
 File: train_control.lua
-Version: 1.2
-Last Modified: 07-05-2020 - Andrboot
+Version: 1.12
+Last Modified: 09-05-2020 - Andrboot
 
 This script provides simple ways to set target velocities and distances for
 trains from the mod Immersive Engineering. To set it up, place two augments,
@@ -15,14 +15,13 @@ This script focuses on two major actions:
 	1. Slowing down the train with brakes.
 	2. Speeding up with the throttle.
 Requires - Redstonecard
-Note: Putting redstone input onTOP will disable the braker, not needed if multi-loco/reversedloco.
-YOUR LOCO WILL NEED A TAG TO WORK
 ]]--
 
 local DEBUG = false
-local VERBOSE = true
+local VERBOSE = false
 local EndScriptAutomatically = false
 local EndScript = false
+local locodirection = directionsethere
 --[[
 This function can be implemented by users for added functionality.
 
@@ -388,11 +387,13 @@ local function handleEvent(augment_type, stock_uuid, params)
 	local stock = detector.info()
 	local rsdetect = component.redstone
 	  if (augment_type == "LOCO_CONTROL" and stock ~= nil ) then
-        print(stock.throttle)
+        if (VERBOSE) then
+		print(stock.throttle)
         print(stock.tag)
-        if ( not (stock.throttle == nil ) and not (stock.throttle <= 0 ) ) then
+		end
+        if  string.match(stock.direction, locodirection) then
 		print("passed stock check")
-            if ((stock.horsepower ~= nil) and rsdetect.getInput(1) == 0 and (stock.tag ~= "") ) then
+            if ((stock.horsepower ~= nil) and rsdetect.getInput(1) == 0 and (stock.tag ~= nil) ) then
 		-- Assume that the detector and the controller are at the same point.
         local consist = detector.consist()
 
@@ -452,13 +453,15 @@ return - float, float: VF and X
 local function getParameters(args)
 	local params = {
 		final_velocity = 0,
-		distance = 40
+		distance = 40,
+		locofacing = 1
 	}
 
 	-- Attempt to get arguments from command line, if given.
-	if (#args == 2) then
+	if (#args == 3) then
 		params.final_velocity = tonumber(args[1])
 		params.distance = tonumber(args[2])
+		params.locofacing = tonumber(args[3])
 		saveParameters(params)
 		print("[i] Saved config to file.")
 	elseif (fs ~= nil) then
@@ -511,13 +514,36 @@ if (not DEBUG) then
 
 	local params = getParameters({...})
 	os.sleep(1)
+	if (params.locofacing == 1) then
+		locodirection = "north"
+	end
+	if (params.locofacing == 2) then
+		locodirection = "east"
+	end
+	if (params.locofacing == 3) then
+			locodirection = "south"
+		if (VERBOSE) then
+			print("south")
+			print(locodirection)
+			print()
+		end
 
-	term.clear()
+	end
+	if (params.locofacing == 4) then
+		locodirection = "west"
+	end
+		
+		
+	if (not VERBOSE) then
+			term.clear()
+	end
+
 	print("--------------------------------------")
 	print("Immersive Railroading Speed Controller")
 	print("--------------------------------------")
 	print("| Target Velocity: " .. params.final_velocity .. " Km/h")
 	print("| Distance: " .. params.distance .. " m")
+	print(locodirection)
 	print("--------------------------------------")
 
 	while not EndScriptAutomatically or not EndScript do
