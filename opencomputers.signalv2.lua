@@ -55,7 +55,7 @@ event.listen("ir_train_overhead", function(name, address, augment_type, uuid)
     -- Get the detector
    -- local Detector = component.proxy(address)
     -- Sleep till train clears if it is active
-	if rs.getInput(redblockclear) > 1 do
+	if rs.getInput(redblockclear) == 1 do
     return(0)
     end
     -- Loop over all the controllers to update them
