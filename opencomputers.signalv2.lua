@@ -48,7 +48,7 @@ event.listen("ir_train_overhead", function(name, address, augment_type, uuid)
    if (stock.direction ~= locodirection) then
 	return
    end
-  if (stock.tag ~= nil) then
+  if (stock.getTag ~= nil) then
 	return
   end
 --    print("event triggered") --debug print
