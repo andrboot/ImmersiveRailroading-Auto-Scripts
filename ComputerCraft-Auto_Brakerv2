@@ -1,0 +1,291 @@
+--[[
+  ComputerCraft 1.20.1 conversion of opencomputers.breakingv2.lua approach.
+  Uses BOTH IR augments:
+    - ir_augment_detector for consist weight/speed/traction metadata
+    - ir_augment_control for brake/throttle commands
+
+  Behavior:
+    - Rising edge on detect redstone starts a braking profile.
+    - Back redstone inhibit pauses control output (no new commands while high).
+    - Brake is solved from required deceleration over target distance.
+    - Control loop runs every 0.1s (< 0.5s requirement).
+]]
+
+local CONFIG = {
+  control_side = "left",
+  detector_side = "right",
+  use_find_control = true,
+  use_find_detector = true,
+
+  redstone_detect_side = "front",
+  redstone_inhibit_side = "back",
+
+  target_stop_distance_m = 400,
+  target_final_speed_km = 0,
+  loop_interval_s = 0.1,
+
+  stop_when_speed_below_ms = 0.08,
+  brake_smoothing = 0.35,
+  brake_multiplier = 1.0,
+  slip_constant = 1.0,
+
+  rolling_resistance_n_per_kg = 0.01471,
+  debug = true,
+}
+
+local function log(msg)
+  if CONFIG.debug then
+    print("[IR brake v2 CC] " .. tostring(msg))
+  end
+end
+
+local function rs_on(side)
+  local fn = redstone and redstone.getInput or (_G.rs and _G.rs.getInput)
+  if not fn then return false end
+  local v = fn(side)
+  if type(v) == "boolean" then return v end
+  return (tonumber(v) or 0) > 0
+end
+
+local function speed_ms_from_kmh(km)
+  return math.abs(tonumber(km) or 0) / 3.6
+end
+
+local function as_table(x)
+  if type(x) == "table" then return x end
+  return nil
+end
+
+local function find_control()
+  if CONFIG.use_find_control and peripheral.find then
+    local p = peripheral.find("ir_augment_control")
+    if p then return p end
+  end
+  return peripheral.wrap(CONFIG.control_side)
+end
+
+local function find_detector()
+  if CONFIG.use_find_detector and peripheral.find then
+    local p = peripheral.find("ir_augment_detector")
+    if p then return p end
+  end
+  return peripheral.wrap(CONFIG.detector_side)
+end
+
+local function call_table(p, method)
+  if not p or type(p[method]) ~= "function" then return nil end
+  local ok, res = pcall(function() return p[method]() end)
+  if not ok then return nil end
+  return as_table(res)
+end
+
+local function call_num(p, method)
+  if not p or type(p[method]) ~= "function" then return nil end
+  local ok, res = pcall(function() return p[method]() end)
+  if not ok then return nil end
+  return tonumber(res)
+end
+
+local function set_throttle(control, v)
+  if type(control.setThrottle) == "function" then
+    pcall(function() control.setThrottle(v) end)
+  end
+end
+
+local function set_brake(control, v)
+  if type(control.setTrainBrake) == "function" then
+    pcall(function() control.setTrainBrake(v) end)
+    return
+  end
+  if type(control.setBrake) == "function" then
+    pcall(function() control.setBrake(v) end)
+  end
+end
+
+local function get_consist(control, detector)
+  local c = call_table(detector, "consist")
+    or call_table(detector, "getConsist")
+    or call_table(control, "consist")
+  if not c then
+    return nil
+  end
+
+  if c.weight_kg == nil then
+    c.weight_kg = call_num(detector, "weight_kg")
+      or call_num(detector, "getWeightKg")
+      or c.weight_kg
+  end
+  if c.speed_km == nil then
+    c.speed_km = call_num(detector, "speed_km")
+      or call_num(detector, "getSpeedKm")
+      or c.speed_km
+  end
+  if c.total_traction_N == nil then
+    c.total_traction_N = call_num(detector, "total_traction_N")
+      or call_num(detector, "getTotalTractionN")
+      or c.total_traction_N
+  end
+  return c
+end
+
+local function get_slip(v_ms)
+  local slip = CONFIG.slip_constant
+  if math.abs(v_ms) >= 0.0001 then
+    slip = slip * (1 - 0.004 * math.abs(v_ms))
+  end
+  if slip < 0.25 then slip = 0.25 end
+  if slip > 1 then slip = 1 end
+  return slip
+end
+
+local function compute_brake_for_state(consist, v_ms, remaining_m)
+  local mass = tonumber(consist.weight_kg) or 0
+  if mass <= 0 or remaining_m <= 0 then
+    return 1
+  end
+
+  local v_target = speed_ms_from_kmh(CONFIG.target_final_speed_km)
+  local req_abs_decel = ((v_ms * v_ms) - (v_target * v_target)) / (2 * remaining_m)
+  if req_abs_decel < 0 then req_abs_decel = 0 end
+
+  local rolling_resistance_n = mass * CONFIG.rolling_resistance_n_per_kg
+  local resist_decel = rolling_resistance_n / mass
+  local brake_decel_needed = req_abs_decel - resist_decel
+  if brake_decel_needed <= 0 then
+    return 0
+  end
+
+  local traction_n = tonumber(consist.total_traction_N) or 0
+  if traction_n <= 0 and type(consist.locomotives) == "table" then
+    local sum = 0
+    for i = 1, #consist.locomotives do
+      sum = sum + (tonumber(consist.locomotives[i].traction) or 0)
+    end
+    traction_n = sum
+  end
+  if traction_n <= 0 then
+    traction_n = 300000
+  end
+
+  local slip = get_slip(v_ms)
+  local max_brake_n = traction_n * slip * CONFIG.brake_multiplier
+  local max_brake_decel = max_brake_n / mass
+  if max_brake_decel <= 0 then
+    return 1
+  end
+
+  if brake_decel_needed >= max_brake_decel then
+    return 1
+  end
+
+  local normalized = brake_decel_needed / max_brake_decel
+  local brake = math.sqrt(math.max(0, math.min(1, normalized)))
+  return brake
+end
+
+local state = {
+  active = false,
+  detect_prev = false,
+  brake_cmd = 0,
+  remaining_m = 0,
+  last_v_ms = 0,
+  last_t = 0,
+}
+
+local function start_brake_profile(consist)
+  local v_ms = speed_ms_from_kmh(consist.speed_km)
+  state.active = true
+  state.remaining_m = CONFIG.target_stop_distance_m
+  state.last_v_ms = v_ms
+  state.last_t = os.clock()
+  state.brake_cmd = 0
+  log(string.format(
+    "Start stop profile: v=%.2f m/s, dist=%.1f m, weight=%s kg",
+    v_ms, state.remaining_m, tostring(consist.weight_kg)
+  ))
+end
+
+local function stop_profile(control, reason)
+  state.active = false
+  state.remaining_m = 0
+  state.brake_cmd = 0
+  set_brake(control, 0)
+  set_throttle(control, 0)
+  if reason then
+    log("Profile ended: " .. reason)
+  end
+end
+
+local function update_braking(control, consist)
+  if not state.active then return end
+
+  local now = os.clock()
+  local dt = math.max(0.02, now - state.last_t)
+  local v_ms = speed_ms_from_kmh(consist.speed_km)
+
+  local ds = 0.5 * (state.last_v_ms + v_ms) * dt
+  state.remaining_m = math.max(0, state.remaining_m - ds)
+  state.last_v_ms = v_ms
+  state.last_t = now
+
+  if v_ms <= CONFIG.stop_when_speed_below_ms then
+    stop_profile(control, "speed below stop threshold")
+    return
+  end
+
+  local target = compute_brake_for_state(consist, v_ms, math.max(state.remaining_m, 0.5))
+  state.brake_cmd = state.brake_cmd + (target - state.brake_cmd) * CONFIG.brake_smoothing
+  if state.remaining_m <= 0 and v_ms > CONFIG.stop_when_speed_below_ms then
+    state.brake_cmd = math.max(state.brake_cmd, 0.9)
+  end
+
+  set_throttle(control, 0)
+  set_brake(control, math.max(0, math.min(1, state.brake_cmd)))
+end
+
+local function main()
+  local control = find_control()
+  if not control then
+    error("No ir_augment_control found.")
+  end
+  local detector = find_detector()
+  if detector then
+    log("Detector augment found.")
+  else
+    log("Detector augment not found; using control consist() fallback.")
+  end
+
+  print("IR braking v2 (ComputerCraft 1.20.1)")
+  print(string.format("Detect=%s Inhibit=%s Loop=%.2fs",
+    CONFIG.redstone_detect_side, CONFIG.redstone_inhibit_side, CONFIG.loop_interval_s))
+
+  while true do
+    local detect = rs_on(CONFIG.redstone_detect_side)
+    local inhibit = rs_on(CONFIG.redstone_inhibit_side)
+
+    if not inhibit and detect and not state.detect_prev then
+      local consist = get_consist(control, detector)
+      if consist then
+        start_brake_profile(consist)
+      else
+        log("No consist data on trigger.")
+      end
+    end
+    state.detect_prev = detect
+
+    if inhibit then
+      sleep(CONFIG.loop_interval_s)
+    else
+      local consist = get_consist(control, detector)
+      if consist then
+        update_braking(control, consist)
+      elseif state.active then
+        log("Consist read failed while active; holding previous brake command.")
+        set_brake(control, state.brake_cmd)
+      end
+      sleep(CONFIG.loop_interval_s)
+    end
+  end
+end
+
+main()
